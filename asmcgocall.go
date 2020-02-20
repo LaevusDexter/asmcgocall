@@ -49,7 +49,7 @@ func calcPadding(fn reflect.Type) (parameters []parameter, returns bool) {
 	}
 
 	var padoffset uintptr
-	parameters = make([]parameter, 0, 2)
+	parameters = make([]parameter, 0, 1)
 
 	off := int(0)
 	for i, n := 0, fn.NumIn(); i < n; i++ {
@@ -77,7 +77,8 @@ func calcPadding(fn reflect.Type) (parameters []parameter, returns bool) {
 		off += int(psize)
 	}
 
-	ptrsize := int(unsafe.Sizeof(uintptr(0)))
+	const ptrsize = int(unsafe.Sizeof(uintptr(0)))
+
 	if off%ptrsize != 0 {
 		pad := ptrsize - off%ptrsize
 
@@ -107,7 +108,7 @@ func calcPadding(fn reflect.Type) (parameters []parameter, returns bool) {
 		}
 
 		if Debug {
-			logf("\t%s r;  // %d %s\n", t.Name(), retsize, bytes(retsize))
+			logf("\t%s ret;  // %d %s\n", t.Name(), retsize, bytes(retsize))
 		}
 
 		parameters = append(parameters, parameter{uintptr(off) - padoffset, uintptr(off), retsize})
@@ -135,17 +136,16 @@ func calcPadding(fn reflect.Type) (parameters []parameter, returns bool) {
 }
 
 func createProxy(cfn unsafe.Pointer, parameters []parameter) func(args [0]byte) (ret [0]byte) {
-	return func(args [0]byte) (ret [0]byte) {
-		params := parameters
-		if len(params) == 0 {
-
-			/*
-				no parameters, so just call, return
-			*/
+	if len(parameters) == 0 {
+		return func(args [0]byte) (ret [0]byte) {
 			asmcgocall(cfn, nil)
 
 			return
 		}
+	}
+
+	return func(args [0]byte) (ret [0]byte) {
+		params := parameters
 
 		pargs := unsafe.Pointer(&args)
 
@@ -176,17 +176,16 @@ func createProxy(cfn unsafe.Pointer, parameters []parameter) func(args [0]byte) 
 }
 
 func createProxyRet(cfn unsafe.Pointer, parameters []parameter) func(args [0]byte) (ret [0]byte) {
-	return func(args [0]byte) (ret [0]byte) {
-		params := parameters
-		if len(params) == 0 {
-
-			/*
-				no parameters, no return value, so just call, return
-			*/
-			asmcgocall(cfn, nil)
+	if len(parameters) == 1 {
+		return func(args [0]byte) (ret [0]byte) {
+			asmcgocall(cfn, unsafe.Pointer(&args))
 
 			return
 		}
+	}
+
+	return func(args [0]byte) (ret [0]byte) {
+		params := parameters
 
 		pargs := unsafe.Pointer(&args)
 
